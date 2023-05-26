@@ -1,37 +1,34 @@
 import { type NextPage } from "next";
 import Head from "next/head";
-import Link from "next/link";
 import {
   TransformWrapper,
   TransformComponent,
-  ReactZoomPanPinchRef,
-  ReactZoomPanPinchContentRef,
+  ReactZoomPanPinchRef
 } from "react-zoom-pan-pinch";
-import joint, {
+import {
+  g,
   dia,
   shapes,
-  routers,
   connectionStrategies,
-  linkTools,
+  linkAnchors,
+  linkTools
 } from "jointjs";
 import React, { useEffect, useRef } from "react";
-import { join } from "path";
 
 import "jointjs/dist/joint.css";
 import "jointjs/css/layout.css";
 import "jointjs/css/themes/modern.css";
 
-import graphlib from "graphlib";
-
 import LayoutWithSidebar from "~/components/LayoutWithSidebar";
-import { v4 as uuidv4 } from "uuid";
+import { generateGraph } from "~/lib/graph";
+import MapRoute, { MapRouteRef } from "~/components/MapRoute";
 
 export const Controls = ({
-  zoomIn,
-  zoomOut,
-  resetTransform,
-  centerView,
-}: {
+                           zoomIn,
+                           zoomOut,
+                           resetTransform,
+                           centerView
+                         }: {
   zoomIn: () => void;
   zoomOut: () => void;
   resetTransform: () => void;
@@ -71,33 +68,12 @@ export const Controls = ({
 
 const MouseMode = {
   NONE: "none",
-  CREATE_PORT: "create-port",
+  CREATE_PORT: "create-port"
 };
 
-class PriorityQueue<T> {
-  private elements: { priority: number; value: T }[];
-
-  constructor() {
-    this.elements = [];
-  }
-
-  enqueue(value: T, priority: number) {
-    this.elements.push({ value, priority });
-    this.elements.sort((a, b) => a.priority - b.priority);
-  }
-
-  dequeue(): { value: T; priority: number } {
-    return this.elements.shift();
-  }
-
-  isEmpty(): boolean {
-    return this.elements.length === 0;
-  }
-}
 
 const MapRoutesCration: NextPage = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const panZoomRef = useRef<ReactZoomPanPinchRef>(null);
   const cells: shapes.devs.Model[] = [];
 
   const [panZoomEnabled, setPanZoomEnabled] = React.useState(false);
@@ -109,19 +85,21 @@ const MapRoutesCration: NextPage = () => {
       {},
       {
         cellNamespace: {
-          devs: shapes.devs,
-        },
+          devs: shapes.devs
+        }
       }
     )
   );
 
   const [paper, setPaper] = React.useState<dia.Paper>();
 
+  const mapRouteRef = useRef<MapRouteRef>(null);
+
   const getLinkToolsView = () => {
     const verticesTool = new linkTools.Vertices({
       redundancyRemoval: false,
       snapRadius: 10,
-      vertexAdding: false,
+      vertexAdding: false
     });
     const segmentsTool = new linkTools.Segments();
     const sourceArrowheadTool = new linkTools.SourceArrowhead();
@@ -134,14 +112,14 @@ const MapRoutesCration: NextPage = () => {
     return new dia.ToolsView({
       tools: [
         verticesTool,
-        segmentsTool,
+        // segmentsTool,
         sourceArrowheadTool,
         targetArrowheadTool,
         sourceAnchorTool,
         targetAnchorTool,
         boundaryTool,
-        removeButton,
-      ],
+        removeButton
+      ]
     });
   };
 
@@ -187,17 +165,17 @@ const MapRoutesCration: NextPage = () => {
             width: "60",
             height: "60",
             fill: "rgba(0,0,0,0)",
-            stroke: "none",
+            stroke: "none"
           },
           ".label": {
-            text: "Точка аудитории",
-          },
+            text: "Точка аудитории"
+          }
         },
 
         portMarkup:
-          '<g class="port">' + '<circle class="port-body" r="10"/>' + "</g>",
+          "<g class=\"port\">" + "<circle class=\"port-body\" r=\"10\"/>" + "</g>",
 
-        inPorts: [""],
+        inPorts: [""]
       });
 
       cell.translate(-40, -40);
@@ -211,11 +189,22 @@ const MapRoutesCration: NextPage = () => {
     [panZoomEnabled]
   );
 
+
+  const vertexAnchor = function(view, magnet, ref, opt) {
+    const vertices = view.model.vertices();
+    const { index = 0 } = opt;
+    if (vertices.length > index) {
+      return new g.Point(vertices[index]);
+    }
+    return view.sourcePoint;
+  };
+
   useEffect(() => {
     const paper = new dia.Paper({
       cellViewNamespace: {
-        devs: shapes.devs,
+        devs: shapes.devs
       },
+
       width: "100%",
       height: "100%",
 
@@ -223,41 +212,56 @@ const MapRoutesCration: NextPage = () => {
       async: true,
 
       gridSize: 5,
-      drawGrid: { name: "mesh" },
       sorting: dia.Paper.sorting.APPROX,
-      background: { color: "#F3F7F6" },
 
-      connectionStrategy: connectionStrategies.pinAbsolute,
+      background: { color: "transparent" },
 
-      validateConnection: function (cellViewS, magnetS, cellViewT, magnetT) {
-        if (magnetS !== magnetT) {
-          return true;
-        }
 
-        return false;
+      connectionStrategy: function(end, view, magnet, coords) {
+        if (view.model.isElement()) return end;
+        const vertices = view.model.vertices();
+        if (vertices.length === 0) return end;
+        const vertex = coords.chooseClosest(vertices);
+        const index = vertices.findIndex(v => vertex.equals(v));
+        end.anchor = {
+          name: 'vertexAnchor',
+          args: { index }
+        };
+        return end;
+
+      },
+      linkAnchorNamespace: {
+        ... linkAnchors,
+        vertexAnchor
+      },
+      validateConnection: (srcView, _, tgtView) => {
+        const src = srcView.model;
+        const tgt = tgtView.model;
+        if (src === tgt) return false;
+        return true;
       },
 
       defaultLink: new shapes.devs.Link({
         attrs: {
           ".connection": {
             stroke: "#000000",
-            "stroke-width": 1,
+            "stroke-width": 1
           },
           ".marker-target": {
             fill: "#000000",
-            d: "M 10 0 L 0 5 L 10 10 z",
+            d: "M 10 0 L 0 5 L 10 10 z"
           },
           ".marker-arrowheads": {
-            display: "none",
+            display: "none"
           },
           ".link-tools": {
-            display: "none",
+            display: "none"
           },
           ".marker-vertices": {
-            display: "none",
-          },
-        },
-      }),
+            display: "none"
+          }
+        }
+      })
     });
 
     if (canvasRef.current) {
@@ -265,11 +269,11 @@ const MapRoutesCration: NextPage = () => {
         canvasRef.current.appendChild(paper.el);
     }
 
-    paper.on("blank:pointerdown", function (evt, x, y) {
+    paper.on("blank:pointerdown", function(evt, x, y) {
       setPanZoomEnabled(true);
     });
 
-    paper.on("cell:pointerup blank:pointerup", function (cellView, event) {
+    paper.on("cell:pointerup blank:pointerup", function(cellView, event) {
       setPanZoomEnabled(false);
     });
 
@@ -277,86 +281,46 @@ const MapRoutesCration: NextPage = () => {
 
     paper.on("blank:pointerdown", handleBlankPointerDown);
 
-    paper.on("link:mouseenter", function (linkView) {
+    paper.on("link:mouseenter", function(linkView) {
       linkView.addTools(getLinkToolsView());
     });
 
-    paper.on("link:mouseleave", function (linkView) {
+    paper.on("link:mouseleave", function(linkView) {
       linkView.removeTools();
     });
+
+    function getConnectionPointByIndex(graph, sourceId, targetId, index) {
+      // Получаем элементы-источник и -цель по их ID
+      const sourceElement = graph.getCell(sourceId);
+      const targetElement = graph.getCell(targetId);
+
+      // Получаем границы элементов
+      const sourceBBox = sourceElement.getBBox();
+      const targetBBox = targetElement.getBBox();
+
+      // Рассчитываем координаты точки соединения на основе индекса
+      const connectionPoints = [
+        { x: sourceBBox.x + sourceBBox.width, y: sourceBBox.y + sourceBBox.height / 2 },
+        { x: targetBBox.x, y: targetBBox.y + targetBBox.height / 2 }
+      ];
+
+      // Возвращаем координаты точки соединения по индексу
+      return connectionPoints[index];
+    }
 
     setPaper(paper);
   }, [canvasRef]);
 
-  useEffect(() => {
-    // Change styles (sizez) of tools, links, vertices, etc. on zoom
-
-    // tool-remove is a <g> element with a <circle> and a <path> inside.
-    // We need to change the size of the <circle> and the <path> to make the
-    // tool bigger or smaller.
-    const toolRemoves = document.querySelectorAll(".tool-remove");
-
-    // marker-vertices is a <g> element with a <circle>  element (.marker-vertex),
-    // and two <path> elements (.marker-vertex-remove-area and .marker-vertex-remove)
-    const markerVertices = document.querySelectorAll(".marker-vertices");
-
-    // marker-arrowhead-group is a <g> element with <path> inside (arrow) (.marker-arrowhead)
-    const markerArrowheads = document.querySelectorAll(
-      ".marker-arrowhead-group"
-    );
-
-    console.log(markerVertices);
-
-    toolRemoves.forEach((el) => {
-      const circle = el.querySelector("circle");
-      const path = el.querySelector("path");
-
-      if (circle && path) {
-        circle.setAttribute("r", `${10 / scale}`);
-
-        // // change transform scale of the path
-        // path.setAttribute("transform", `scale(${1 / scale})`);
-        // change position of the path to make it centered in the circle and update scale
-        path.setAttribute(
-          "transform",
-          `translate(${-13 / scale}, ${-13 / scale}) scale(${0.8 / scale})`
-        );
-      }
-    });
-
-    markerVertices.forEach((el) => {
-      const circle = el.querySelector("circle");
-      const path = el.querySelector("path");
-
-      if (circle && path) {
-        circle.setAttribute("r", `${10 / scale}`);
-
-        // // The .marker-vertex-remove path is a cross. Default transform="scale(.8) translate(9.5, -37)"
-        // //
-        // path.setAttribute("transform", `translate(${9.5 / scale}, ${-37 / scale}) scale(${0.8 / scale})`);
-      }
-    });
-
-    markerArrowheads.forEach((el) => {
-      const path = el.querySelector("path");
-
-      if (path) {
-        // change transform scale of the path
-        path.setAttribute(
-          "transform",
-          `scale(${1 / scale}) translate(${0 / scale}, ${-10 / scale})`
-        );
-      }
-    });
-  }, [scale]);
 
   const exportGraph = () => {
-    const json = normalizeGraph(graph);
+    const json = graph.toJSON();
+
+    const grapw = generateGraph(graph);
 
     // Download the file
     const element = document.createElement("a");
     const file = new Blob([JSON.stringify(json)], {
-      type: "application/json",
+      type: "application/json"
     });
     element.href = URL.createObjectURL(file);
     element.download = "graph.json";
@@ -364,216 +328,6 @@ const MapRoutesCration: NextPage = () => {
     element.click();
   };
 
-  const getDistance = (x1: number, y1: number, x2: number, y2: number) => {
-    return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-  };
-
-  const normalizeGraph = (graph: dia.Graph) => {
-    const normalizedGraph = graph.toJSON();
-    const cells = normalizedGraph.cells;
-
-    for (const cell of cells) {
-      const links = graph.getConnectedLinks(cell);
-
-      links.forEach((link) => {
-        const sourceId = link.source().id?.toString();
-        const targetId = link.target().id?.toString();
-
-        console.log("sourceId", sourceId);
-        console.log("targetId", targetId);
-
-        // Не учитываем "тупиковые" ребра и ребра, которые не соединяют две вершины
-        if (!sourceId || !targetId) return;
-
-        const vertices = link.vertices().map((vertex) => {
-          return {
-            x: vertex.x,
-            y: vertex.y,
-          };
-        });
-
-        console.log("vertices", vertices);
-
-        const newLinks = [];
-        const newVertices = [];
-
-        // Разделяем ребро на отрезки
-        if (vertices.length > 0) {
-          for (let i = 0; i < vertices.length; i++) {
-            const currentVertex = vertices[i];
-            if (!currentVertex) return;
-
-            const newVertexId = uuidv4();
-            // Создаем новую вершину
-            const newVertex = {
-              type: "Vertex",
-              x: currentVertex.x,
-              y: currentVertex.y,
-              id: newVertexId,
-            };
-
-            newVertices.push(newVertex);
-
-            if (i === 0) {
-              // Создаем новое ребро, соединяющее начальную точку с первой вершиной
-              const newLink = {
-                type: "Link",
-                source: { id: sourceId },
-                target: { id: newVertexId },
-                id: uuidv4(),
-                vertices: [],
-              };
-              newLinks.push(newLink);
-            } else if (i === vertices.length - 1) {
-              // Создаем новое ребро, соединяющее последнюю вершину с конечной точкой
-              const newLink = {
-                type: "Link",
-                source: { id: newVertices[i - 1].id },
-                target: { id: targetId },
-                id: uuidv4(),
-                vertices: [],
-              };
-              newLinks.push(newLink);
-            } else {
-              // Создаем новое ребро, соединяющее текущую вершину с предыдущей
-              const newLink = {
-                type: "Link",
-                source: { id: newVertices[i - 1].id },
-                target: { id: newVertexId },
-                id: uuidv4(),
-                vertices: [],
-              };
-              newLinks.push(newLink);
-            }
-          }
-
-          // Удаляем старый Link из графа
-          normalizedGraph.cells = normalizedGraph.cells.filter(
-            (cell) => cell.id !== link.id
-          );
-
-          // Добавляем новые вершины и ребра
-          normalizedGraph.cells = [...normalizedGraph.cells, ...newVertices];
-          normalizedGraph.cells = [...normalizedGraph.cells, ...newLinks];
-        }
-      });
-    }
-
-    return normalizedGraph;
-  };
-
-  const findShortestPath = (
-    graph: dia.Graph,
-    startLabel: string,
-    endLabel: string
-  ) => {
-    const cells = graph.getCells();
-
-    const startCell = cells.find((cell) => {
-      if (cell.attributes.attrs === undefined) return false;
-      if (cell.attributes.attrs[".label"] === undefined) return false;
-      return cell.attributes.attrs[".label"].text === startLabel;
-    });
-
-    const endCell = cells.find((cell) => {
-      if (cell.attributes.attrs === undefined) return false;
-      if (cell.attributes.attrs[".label"] === undefined) return false;
-      return cell.attributes.attrs[".label"].text === endLabel;
-    });
-
-    if (!startCell || !endCell) return;
-
-    const startId = startCell.id.toString();
-    const endId = endCell.id.toString();
-
-    const normalizedGraph = normalizeGraph(graph);
-
-    const vertices = normalizedGraph.cells.filter(
-      (cell) => cell.type === "Vertex"
-    );
-    const edges = normalizedGraph.cells.filter((cell) => cell.type === "Link");
-
-    console.log(vertices)
-    console.log(edges)
-
-    // Create an adjacency list for the graph
-    const adjacencyList = {};
-    for (const vertex of vertices) {
-      const vertexId = vertex.id.toString();
-      adjacencyList[vertexId] = [];
-      for (const edge of edges) {
-        const sourceId = edge.source.id.toString();
-        const targetId = edge.target.id.toString();
-        if (sourceId === vertexId) {
-          const distance = getDistance(
-            vertex.position.x,
-            vertex.position.y,
-            edge.target.point.x,
-            edge.target.point.y
-          );
-          adjacencyList[vertexId].push({ targetId, distance });
-        } else if (targetId === vertexId) {
-          const distance = getDistance(
-            vertex.position.x,
-            vertex.position.y,
-            edge.source.point.x,
-            edge.source.point.y
-          );
-          adjacencyList[vertexId].push({ targetId: sourceId, distance });
-        }
-      }
-    }
-
-    // Dijkstra's algorithm
-    const distances = {};
-    const visited = {};
-    const previous = {};
-    const queue = new PriorityQueue();
-
-    for (const vertex of vertices) {
-      const vertexId = vertex.id.toString();
-      if (vertexId === startId) {
-        distances[vertexId] = 0;
-        queue.enqueue(vertexId, 0);
-      } else {
-        distances[vertexId] = Infinity;
-        queue.enqueue(vertexId, Infinity);
-      }
-      previous[vertexId] = null;
-    }
-
-    while (!queue.isEmpty()) {
-      const currentVertexId = queue.dequeue().element;
-      visited[currentVertexId] = true;
-
-      if (currentVertexId === endId) {
-        const path = [];
-        let current = endId;
-        while (current !== null) {
-          path.unshift(current);
-          current = previous[current];
-        }
-        console.log(path);
-        return path;
-      }
-
-      const neighbors = adjacencyList[currentVertexId];
-      for (const neighbor of neighbors) {
-        const neighborId = neighbor.targetId;
-        if (visited[neighborId]) continue;
-        const distance = neighbor.distance;
-        const currentDistance = distances[currentVertexId];
-        const tentativeDistance = currentDistance + distance;
-        if (tentativeDistance < distances[neighborId]) {
-          distances[neighborId] = tentativeDistance;
-          previous[neighborId] = currentVertexId;
-          queue.enqueue(neighborId, tentativeDistance);
-        }
-      }
-    }
-
-    return null;
-  };
   const [startLabel, setStartLabel] = React.useState("");
   const [endLabel, setEndLabel] = React.useState("");
 
@@ -615,14 +369,24 @@ const MapRoutesCration: NextPage = () => {
             <button
               className="m-2 h-10 rounded bg-blue-500 p-2 text-white"
               onClick={() => {
-                console.log(findShortestPath(graph, startLabel, endLabel));
+                if (!startLabel || !endLabel) return;
+
+                const generated = generateGraph(graph);
+
+                console.log(generated, startLabel, endLabel);
+
+                mapRouteRef.current?.renderRoute(
+                  generated,
+                  startLabel,
+                  endLabel
+                );
               }}
             >
               Рисовать маршрут
             </button>
           </div>
 
-          <div id="map" className="h-full w-full overflow-auto">
+          <div id="map" className="h-full w-full overflow-auto relative">
             <TransformWrapper
               initialScale={1}
               panning={{ disabled: !panZoomEnabled }}
@@ -648,12 +412,12 @@ const MapRoutesCration: NextPage = () => {
                   />
                   <TransformComponent>
                     <div
-                      className="absolute z-10 h-full w-full
-                    "
+                      className="absolute z-30 h-full w-full"
                       ref={canvasRef}
                     />
+                    <MapRoute ref={mapRouteRef} className="absolute z-20" />
                     <svg
-                      className="z-1 relative h-full w-full"
+                      className="z-10 relative top-0 left-0 h-full w-full"
                       width="1152"
                       height="1026"
                       viewBox="0 0 1152 1026"
