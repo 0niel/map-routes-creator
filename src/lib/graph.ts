@@ -1,17 +1,21 @@
 import { dia } from "jointjs";
 import { v4 as uuidv4 } from "uuid";
+import { MapObject } from "./figma-map-config";
+import { StairsRef } from "./stores/map-config-store";
 
 export interface Vertex {
   id: string;
   x: number;
   y: number;
-  label: string;
+  mapObjectId: string;
 }
 
 export interface Edge {
   source: string;
   target: string;
   weight: number;
+
+  toNextFloor?: boolean;
 }
 
 export interface Graph {
@@ -23,23 +27,96 @@ export function distance(x1: number, y1: number, x2: number, y2: number): number
   return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
 }
 
-export function generateGraph(data: dia.Graph): Graph {
+export const getShortestPath = (graph: Graph, startName: string, endName: string, objects: MapObject[]): Vertex[] | null => {
+  if (graph.vertices.length === 0) {
+    return null;
+  }
+
+  const findObjectByName = (name: string) => {
+    return objects.find((o) => o.name === name);
+  };
+
+  const dijkstra = (graph: Graph, start: Vertex, end: Vertex) => {
+    const dist = new Map<string, number>();
+    const prev = new Map<string, Vertex | null>();
+
+    for (const vertex of graph.vertices) {
+      dist.set(vertex.id, Infinity);
+      prev.set(vertex.id, null);
+    }
+
+    dist.set(start.id, 0);
+
+    const unvisited = new Set(graph.vertices);
+
+    while (unvisited.size) {
+      let closest: Vertex | null = null;
+
+      for (const vertex of unvisited) {
+        if (!closest || dist.get(vertex.id)! < dist.get(closest.id)!) {
+          closest = vertex;
+        }
+      }
+
+      unvisited.delete(closest!);
+
+      if (closest === end) break;
+
+      for (const edge of graph.edges) {
+        if (edge.source === closest?.id || edge.target === closest?.id) {
+          const neighborId = edge.source === closest.id ? edge.target : edge.source;
+          const neighbor = graph.vertices.find((v) => v.id === neighborId)!;
+
+          if (neighbor) {  // Добавьте это условие для проверки существования соседа
+            const alt = dist.get(closest.id)! + edge.weight;
+            if (alt < dist.get(neighbor.id)!) {
+              dist.set(neighbor.id, alt);
+              prev.set(neighbor.id, closest);
+            }
+          }
+        }
+      }
+    }
+
+    const path = [];
+    let u = end;
+    while (u) {
+      path.unshift(u);
+      u = prev.get(u.id)!;
+    }
+
+    return path;
+  };
+
+  const start = graph.vertices.find((v) => v.mapObjectId === findObjectByName(startName)?.id);
+  const end = graph.vertices.find((v) => v.mapObjectId === findObjectByName(endName)?.id);
+
+  if (!start || !end) return null;
+
+  const path = dijkstra(graph, start, end);
+
+  return path;
+};
+
+export function generateGraph(data: dia.Graph, stairsRef: StairsRef[]): Graph {
   const vertices: Vertex[] = data.getCells()
-    .filter((cell: dia.Cell) => cell.attributes.type === "RoomPoint")
+    .filter((cell: dia.Cell) => cell.attributes.type === "devs.Model")
     .map((cell: dia.Cell) => ({
       id: cell.id,
       x: cell.attributes.position.x,
       y: cell.attributes.position.y,
-      label: cell.attr(".label").text
+      mapObjectId: cell.attr('.id').text
     }));
 
   const edges: Edge[] = [];
+
 
   data.getCells()
     .filter((cell: dia.Cell) => cell.attributes.type === "devs.Link")
     .forEach((cell: dia.Cell) => {
       const sourceId = (cell.get("source") as { id: string }).id;
       const targetId = (cell.get("target") as { id: string }).id;
+
 
       const sourceVertex = vertices.find((v) => v.id === sourceId);
       const targetVertex = vertices.find((v) => v.id === targetId);
@@ -67,6 +144,8 @@ export function generateGraph(data: dia.Graph): Graph {
       }
     });
 
+  console.log(`[!] Graph generated with ${vertices.length} vertices and ${edges.length} edges`);
+
   const getVertexInPoint = (x: number, y: number): Vertex | undefined => {
     return vertices.find((v) => v.x === x && v.y === y);
   };
@@ -82,7 +161,7 @@ export function generateGraph(data: dia.Graph): Graph {
         const targetLink = data.getCell(targetId) as dia.Link;
         if (targetLink.attributes.vertices) {
           const targetVertexIndex = targetAnchor.args.index;
-          let targetVertex = targetLink.attributes.vertices[targetVertexIndex];
+          const targetVertex = targetLink.attributes.vertices[targetVertexIndex];
           targetId = getVertexInPoint(targetVertex.x, targetVertex.y)?.id ?? targetId;
         }
 
@@ -114,5 +193,21 @@ export function generateGraph(data: dia.Graph): Graph {
       }
     });
 
+  stairsRef.forEach((stairs) => {
+    const fromVertex = vertices.find((v) => v.mapObjectId === stairs.fromId);
+    if (!fromVertex) return;
+
+    stairs.toId.forEach((toId) => {
+      edges.push({ source: fromVertex.id, target: toId, weight: 0, toNextFloor: true });
+    });
+  });
+
   return { vertices, edges };
+}
+
+
+export function importFromJSON(json: string): Graph {
+  const data = JSON.parse(json);
+
+  return generateGraph(data);
 }
