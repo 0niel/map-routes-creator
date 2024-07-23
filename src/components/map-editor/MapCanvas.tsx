@@ -109,12 +109,33 @@ const MapCanvas = ({
         inPorts: [""],
       });
 
-      jointCanvas.graph.addCells([cell]);
+      jointCanvas.graph.addCell(cell);
 
       setMouseMode(MouseMode.NONE);
     },
     [jointCanvas.graph, setMouseMode],
   );
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && e.code === "KeyW") {
+        setMouseMode(MouseMode.CREATE_PORT);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Escape") {
+        setMouseMode(MouseMode.NONE);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
+
+    // Убрать возможность выделения текста
+    document.addEventListener("selectstart", (e) => e.preventDefault());
+    
+  }, [setMouseMode]);
 
   const getPaper = useMemo(() => {
     const paper = createPaper(jointCanvas.graph);
@@ -147,6 +168,20 @@ const MapCanvas = ({
 
       if (mapObject) {
         onMapObjectDoubleClick(mapObject);
+      }
+    });
+
+    // on dobule right click delete object
+    paper.on("cell:contextmenu", function (cellView) {
+      const objId = cellView.model.attr(".id/text") as string | undefined;
+
+      if (objId) {
+        const canvas = paper;
+        const cell = canvas.findViewByModel(cellView.model);
+
+        if (cell) {
+          cell.model.remove();
+        }
       }
     });
 

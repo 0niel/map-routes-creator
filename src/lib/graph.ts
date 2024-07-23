@@ -100,13 +100,15 @@ export const getShortestPath = (graph: Graph, startName: string, endName: string
 
 export function generateGraph(data: dia.Graph, stairsRef: StairsRef[]): Graph {
   const vertices: Vertex[] = data.getCells()
-    .filter((cell: dia.Cell) => cell.attributes.type === "devs.Model")
-    .map((cell: dia.Cell) => ({
-      id: cell.id,
-      x: cell.attributes.position.x,
-      y: cell.attributes.position.y,
-      mapObjectId: cell.attr('.id').text
-    }));
+    .filter((cell: dia.Cell) => cell.attributes.type === "devs.Model" && cell.attr('.id') !== undefined)
+    .map((cell: dia.Cell) => {
+      return {
+        id: cell.id,
+        x: cell.attributes.position.x,
+        y: cell.attributes.position.y,
+        mapObjectId: cell.attr('.id').text
+      }
+    });
 
   const edges: Edge[] = [];
 
@@ -197,7 +199,7 @@ export function generateGraph(data: dia.Graph, stairsRef: StairsRef[]): Graph {
     const fromVertex = vertices.find((v) => v.mapObjectId === stairs.fromId);
     if (!fromVertex) return;
 
-    stairs.toId.forEach((toId) => {
+    stairs.toIds.forEach((toId) => {
       edges.push({ source: fromVertex.id, target: toId, weight: 0, toNextFloor: true });
     });
   });

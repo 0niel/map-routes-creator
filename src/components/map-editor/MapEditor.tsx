@@ -24,6 +24,7 @@ import { MapObject, MapObjectType } from "~/lib/figma-map-config";
 export const MouseMode = {
   NONE: "none",
   CREATE_PORT: "create-port",
+  SELECT_ELEMETS: "select-elements",
 };
 
 const MapEditor = () => {
@@ -61,19 +62,19 @@ const MapEditor = () => {
     jointCanvasRef.current = jointCanvas;
   }, [jointCanvas]);
 
-
   const exportGraph = () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const json = jointCanvasRef.current.graph.toJSON();
 
-    const element = document.createElement("a");
-    const file = new Blob([JSON.stringify(json)], {
+    // с выбором  в какую папку сохранять
+    const file = new File([JSON.stringify(json)], "graph.json", {
       type: "application/json",
     });
-    element.href = URL.createObjectURL(file);
-    element.download = "graph.json";
-    document.body.appendChild(element); // Required for this to work in FireFox
-    element.click();
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(file);
+    a.download = "graph.json";
+    a.click();
   };
 
   const transformComponentRef = useRef<ReactZoomPanPinchRef | null>(null);
@@ -81,38 +82,6 @@ const MapEditor = () => {
   const [toolsDialogOpen, setToolsDialogOpen] = React.useState(false);
 
   const [map, setMap] = React.useState<string | null>(null);
-
-  const handleMapLoad = () => {
-    if (!transformComponentRef.current)
-      return console.error("transformComponentRef is null");
-
-    const wrapperComponent = document.querySelector(
-      ".react-transform-wrapper",
-    ) as HTMLDivElement;
-    const contentComponent = document.querySelector(
-      ".react-transform-component",
-    ) as HTMLDivElement;
-
-    const svg = document.querySelector("#svg-map > svg") as HTMLDivElement;
-
-    if (!wrapperComponent || !contentComponent || !svg) return;
-
-    contentComponent.appendChild(svg);
-    document.querySelector("#svg-map")?.remove();
-
-    transformComponentRef.current?.instance.init(
-      wrapperComponent,
-      contentComponent,
-    );
-
-    setPanZoomEnabled(true);
-
-    console.log(panZoomEnabled);
-  };
-
-  useEffect(() => {
-    handleMapLoad();
-  }, [map]);
 
   type StairsDialogOptions = {
     open: boolean;
@@ -171,7 +140,10 @@ const MapEditor = () => {
               reader.readAsText(file);
             }}
             drawRoute={(startName, endName) => {
-              const generated = generateGraph(jointCanvasRef.current.graph, mapConfigRef.current.stairsRef);
+              const generated = generateGraph(
+                jointCanvasRef.current.graph,
+                mapConfigRef.current.stairsRefs,
+              );
 
               console.log(generated);
 

@@ -1,8 +1,10 @@
 import { Dialog } from "@headlessui/react";
 import { Button } from "flowbite-react";
 import { FileInput, TextInput } from "flowbite-react";
+import { dia } from "jointjs";
 import React, { useEffect, useRef, useState } from "react";
 import { MapConfig } from "~/lib/figma-map-config";
+import { useJointCanvasStore } from "~/lib/stores/joint-canvas-store";
 import { useMapConfigStore } from "~/lib/stores/map-config-store";
 
 interface MapToolsDialogProps {
@@ -27,6 +29,7 @@ const MapToolsDialog: React.FC<MapToolsDialogProps> = ({
   const [endLabel, setEndLabel] = useState("");
 
   const figmaMapConfig = useMapConfigStore();
+  const jointCanvas = useJointCanvasStore();
 
   const onFigmaImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -70,6 +73,72 @@ const MapToolsDialog: React.FC<MapToolsDialogProps> = ({
           >
             Экспорт карты
           </button>
+
+          {/* Ползунок для x и для y который изменяет координаты cells */}
+          <div className="flex flex-col">
+            <label htmlFor="x">X</label>
+            <input
+              type="text"
+              className="m-2 rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-300"
+              onChange={(e) => {
+                if (!e.target.value || isNaN(parseInt(e.target.value))) {
+                  return;
+                }
+                jointCanvas.graph.getElements().forEach((cell) => {
+                  if (cell.isElement()) {
+                    cell.set("position", {
+                      x: cell.get("position").x + parseInt(e.target.value),
+                      y: cell.get("position").y,
+                    });
+                  }
+                });
+                jointCanvas.graph.getLinks().forEach((link) => {
+                  const vertices = link.get("vertices");
+                  if (!vertices) return;
+                  link.set(
+                    "vertices",
+                    vertices.map((vertex) => {
+                      return {
+                        x: vertex.x + parseInt(e.target.value),
+                        y: vertex.y,
+                      };
+                    }),
+                  );
+                });
+              }}
+            />
+            <label htmlFor="y">Y</label>
+            <input
+              type="text"
+              className="m-2 rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-300"
+              onChange={(e) => {
+                if (!e.target.value || isNaN(parseInt(e.target.value))) {
+                  return;
+                }
+                jointCanvas.graph.getElements().forEach((cell) => {
+                  if (cell.isElement()) {
+                    cell.set("position", {
+                      x: cell.get("position").x,
+                      y: cell.get("position").y + parseInt(e.target.value),
+                    });
+                  }
+                });
+                jointCanvas.graph.getLinks().forEach((link) => {
+                  const vertices = link.get("vertices");
+                  if (!vertices) return;
+                  link.set(
+                    "vertices",
+                    vertices.map((vertex) => {
+                      return {
+                        x: vertex.x,
+                        y: vertex.y + parseInt(e.target.value),
+                      };
+                    }),
+                  );
+                });
+              }}
+            />
+          </div>
 
           {/* Импорт карты */}
           <div className="flex flex-col">

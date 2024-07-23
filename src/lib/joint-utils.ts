@@ -22,6 +22,7 @@ const connectionStrategy = function (
     const point = new g.Point(coords);
     const vertex = point.chooseClosest(vertices);
     if (!vertex) return end;
+    console.log("CONNECTION STRATEGY")
     const index = vertices.findIndex((v) => vertex.equals(v as g.Point));
     end.anchor = {
         name: "vertexAnchor",

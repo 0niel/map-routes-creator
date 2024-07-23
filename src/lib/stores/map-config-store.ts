@@ -3,7 +3,7 @@ import { MapConfig } from "../figma-map-config"
 
 export interface StairsRef {
     fromId: string
-    toId: string[]
+    toIds: string[]
 }
 
 interface MapConfigStore {
@@ -11,7 +11,8 @@ interface MapConfigStore {
     setConfig: (config: MapConfig) => void
     editerFloor: number
     setEditerFloor: (floor: number) => void
-    stairsRef: StairsRef[]
+    stairsRefs: StairsRef[]
+    setStairsRefs: (stairsRefs: StairsRef[]) => void
 }
 
 export const useMapConfigStore = create<MapConfigStore>((set) => ({
@@ -22,5 +23,6 @@ export const useMapConfigStore = create<MapConfigStore>((set) => ({
     setConfig: (config) => set({ config }),
     editerFloor: 0,
     setEditerFloor: (floor) => set({ editerFloor: floor }),
-    stairsRef: [],
+    stairsRefs: [],
+    setStairsRefs: (stairsRefs) => set({ stairsRefs }),
 }))
