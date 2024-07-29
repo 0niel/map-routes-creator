@@ -174,7 +174,7 @@ const MapToolsDialog: React.FC<MapToolsDialogProps> = ({
                 figmaMapConfig.setEditerFloor(parseInt(e.target.value));
               }}
             >
-              {Array.from({ length: 8 }, (_, i) => i - 1).map((floor) => (
+              {Array.from({ length: 20 }, (_, i) => i - 1).map((floor) => (
                 <option value={floor} key={floor}>
                   {floor}
                 </option>
